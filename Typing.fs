@@ -14,7 +14,7 @@ type subst = (tyvar * ty) list
 // TODO implement this
 let compose_subst (s1 : subst) (s2 : subst) : subst = s1 @ s2
 
-// TODO implement this
+// TODO implement this (DONE)
 let rec unify (t1 : ty) (t2 : ty) : subst = 
     match (t1, t2) with
     | TyName s1, TyName s2 when s1 = s2 -> [] 
@@ -29,7 +29,7 @@ let rec unify (t1 : ty) (t2 : ty) : subst =
 
     | _ -> type_error "cannot unify types %O and %O" t1 t2
 
-// TODO implement this
+// TODO implement this (DONE)
 let rec apply_subst (s : subst) (t : ty) : ty =
     match t with
     | TyName _ -> t
@@ -57,14 +57,18 @@ let freevars_scheme_env env =
     List.fold (fun r (_, sch) -> r + freevars_scheme sch) Set.empty env
 
 
-// basic environment: add builtin operators at will
-//
+// basic environment:
+// TODO: add builtin operators at will
 
 let gamma0 = [
     ("+", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
     ("-", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
 
 ]
+
+// basic enviroment for type inference
+// create a list as env of (string * type scheme)
+let init_scheme_env = List.map (fun (s, t) -> (s, Forall (Set.empty, t))) gamma0
 
 
 // TODO continue implementing this
@@ -77,12 +81,16 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
     | Lit (LChar _) -> TyChar, [] 
     | Lit LUnit -> TyUnit, []
 
+    | Var x -> TyInt, [] 
+
     | Let (x, tyo, e1, e2) ->
         let t1, s1 = typeinfer_expr env e1
         let tvs = freevars_ty t1 - freevars_scheme_env env
         let sch = Forall (tvs, t1)
         let t2, s2 = typeinfer_expr ((x, sch) :: env) e2
         t2, compose_subst s2 s1
+
+    | App (e1, e2) -> failwithf "almeno ce so"
 
     | _ -> failwithf "not implemented"
 
