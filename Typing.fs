@@ -7,9 +7,19 @@ module TinyML.Typing
 
 open Ast
 
+type subst = (tyvar * ty) list
+
+//
+// Utility
+//
+
 let type_error fmt = throw_formatted TypeError fmt
 
-type subst = (tyvar * ty) list
+let mutable tyVarCounter = 0
+
+let freshTyVar = 
+    tyVarCounter <- tyVarCounter + 1
+    TyVar tyVarCounter
 
 // TODO implement this
 let compose_subst (s1 : subst) (s2 : subst) : subst = s1 @ s2
@@ -53,8 +63,33 @@ let rec freevars_ty t =
 
 let freevars_scheme (Forall (tvs, t)) = freevars_ty t - tvs
 
-let freevars_scheme_env env =
+let freevars_scheme_env (env: scheme env) =
     List.fold (fun r (_, sch) -> r + freevars_scheme sch) Set.empty env
+
+// generalize a ty to scheme
+let generalize_scheme_env (t: ty) (env: scheme env) : scheme  = 
+        let tvs = freevars_ty t - freevars_scheme_env env
+        let sch = Forall (tvs, t) 
+        sch
+
+// utility fun for inst_ty
+let rec re (tvs: Set<tyvar>) (t: ty) : ty =
+    match t with
+    | TyName x -> TyName x
+
+    | TyVar x -> 
+        if(Set.contains x tvs) // controlla se 'a è in 'a negato  
+            then freshTyVar 
+            else TyVar x
+    
+    | TyArrow(t1, t2) -> TyArrow(re tvs t1, re tvs t2)
+    
+    | TyTuple(ts) -> TyTuple(List.map (fun (t) -> re tvs t) ts)
+
+
+// instantiate a ty from a scheme
+let inst_ty (Forall (tvs, t)) : ty = 
+    re tvs t
 
 
 // basic environment:
@@ -81,16 +116,20 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
     | Lit (LChar _) -> TyChar, [] 
     | Lit LUnit -> TyUnit, []
 
-    | Var x -> TyInt, [] 
+    | Var x -> 
+        try
+            let _, sch = List.find (fun (y, _) -> x = y) env // prendo schema di x
+            let t = inst_ty sch // instanzializzo lo schema per ricavare t
+            t, [] 
+        with KeyNotFoundException -> type_error "%s in not in the domain" x 
 
     | Let (x, tyo, e1, e2) ->
         let t1, s1 = typeinfer_expr env e1
-        let tvs = freevars_ty t1 - freevars_scheme_env env
-        let sch = Forall (tvs, t1)
-        let t2, s2 = typeinfer_expr ((x, sch) :: env) e2
+        //let tvs = freevars_ty t1 - freevars_scheme_env env
+        //let sch = Forall (tvs, t1)
+        let sch = generalize_scheme_env t1 env
+        let t2, s2 = typeinfer_expr ((x, sch) :: env) e2 //TODO: manca applicazione sostituzione s1 a env (guarda regola)
         t2, compose_subst s2 s1
-
-    | App (e1, e2) -> failwithf "almeno ce so"
 
     | _ -> failwithf "not implemented"
 
