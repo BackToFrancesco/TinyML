@@ -9,6 +9,19 @@ open Ast
 
 type subst = (tyvar * ty) list
 
+// debug function
+let rec printSubst (s : subst) = 
+    match s with
+    | [] -> ()
+    | (tyvar, ty) :: tl -> 
+        printfn "%d -> %A" tyvar ty
+        printSubst tl
+
+let print_sub (s : subst) =
+    printf "\n SUBSTITUTIONs \n"
+    printSubst s
+    printf "\n END \n"
+
 //
 // Utility
 //
@@ -21,8 +34,37 @@ let freshTyVar =
     tyVarCounter <- tyVarCounter + 1
     TyVar tyVarCounter
 
+// TODO implement this (DONE)
+let rec apply_subst (s : subst) (t : ty) : ty =
+    match t with
+    | TyName _ -> t
+
+    | TyArrow (t1, t2) -> TyArrow (apply_subst s t1, apply_subst s t2)
+
+    | TyVar tv -> 
+        try
+            let _, t1 = List.find (fun (tv1, _) -> tv1 = tv) s
+            in
+                t1
+        with KeyNotFoundException -> t // maybe try this
+        //TODO: avoid circularity
+
+    | TyTuple ts -> TyTuple (List.map (apply_subst s) ts)
+
+// given a list l, for every element of a list 
+let mapEq (l: (tyvar * ty) List) ((tv: tyvar), (t: ty)) =
+    let p = List.tryFind (fun (tvl,_) -> tv = tvl) l
+
+    match p with
+    | None -> tv, t // no element found
+    | Some (tv2, t2) -> 
+        if t2 <> t then type_error "Cannot compose substs with <> mappings for the same TyVar (s2 has [%d -> %O] while s1 has [%d -> %O])" tv t tv2 t2
+        else tv2, apply_subst [(tv, t)] t2
+
 // TODO implement this
-let compose_subst (s1 : subst) (s2 : subst) : subst = s1 @ s2
+let compose_subst (s1 : subst) (s2 : subst) : subst =
+    (List.map (mapEq s1) s2) @ s1 
+    
 
 // TODO implement this (DONE)
 let rec unify (t1 : ty) (t2 : ty) : subst = 
@@ -38,21 +80,6 @@ let rec unify (t1 : ty) (t2 : ty) : subst =
         List.fold (fun s (t1, t2) -> compose_subst s (unify t1 t2)) [] (List.zip ts1 ts2)
 
     | _ -> type_error "cannot unify types %O and %O" t1 t2
-
-// TODO implement this (DONE)
-let rec apply_subst (s : subst) (t : ty) : ty =
-    match t with
-    | TyName _ -> t
-    | TyArrow (t1, t2) -> TyArrow (apply_subst s t1, apply_subst s t2)
-    | TyVar tv -> 
-        try
-            let _, t1 = List.find (fun (tv1, _) -> tv1 = tv) s
-            in
-                t1
-        with KeyNotFoundException -> t // maybe try this
-
-    | TyTuple ts -> TyTuple (List.map (apply_subst s) ts)
-
 
 let rec freevars_ty t =
     match t with
@@ -121,7 +148,21 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
             let _, sch = List.find (fun (y, _) -> x = y) env // prendo schema di x
             let t = inst_ty sch // instanzializzo lo schema per ricavare t
             t, [] 
-        with KeyNotFoundException -> type_error "%s in not in the domain" x 
+        with KeyNotFoundException -> type_error "%s in not in the domain" x
+
+    | Lambda (x, tyo, e) ->  // tyo = type optional (annotated lambda)
+        let tv = freshTyVar
+        let sch = Forall(Set.empty, tv) // dummy ty scheme
+        let t2, s1 = typeinfer_expr ((x, sch) :: env) e
+        let t1 = apply_subst s1 tv
+
+        // annotated lambdas
+        let s2 = 
+            match tyo with
+            | None -> []
+            | Some t -> unify t1 t 
+
+        TyArrow(t1, t2), compose_subst s1 s2
 
     | Let (x, tyo, e1, e2) ->
         let t1, s1 = typeinfer_expr env e1

@@ -23,7 +23,7 @@ let interpret_expr tenv venv e =
     #if DEBUG
     printfn "value:\t%s\n" (pretty_value v)
     #endif
-    t, v
+    Typing.apply_subst s t, v
 
 let trap f =
     try f ()
