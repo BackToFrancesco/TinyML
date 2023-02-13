@@ -30,7 +30,7 @@ let type_error fmt = throw_formatted TypeError fmt
 
 let mutable tyVarCounter = 0
 
-let freshTyVar = 
+let freshTyVar (): ty = 
     tyVarCounter <- tyVarCounter + 1
     TyVar tyVarCounter
 
@@ -69,6 +69,15 @@ let rec apply_subst (s : subst) (t : ty) : ty =
 
     | TyTuple ts -> TyTuple (List.map (apply_subst s) ts)
 
+// Apply a substitution to a scheme
+let apply_subst_scheme  (Forall (tvs, t)) (s: subst): scheme = 
+    let s1 = List.filter (fun (tv, _) -> not (Set.contains tv tvs)) s
+    Forall(tvs, apply_subst s1 t)
+
+// Apply a substitution to the env
+let apply_subst_scheme_env (env: scheme env) (s: subst) : scheme env =
+    List.map (fun (id , sch) -> id, apply_subst_scheme sch s) env
+
 // given a subst list l:
 // 1. checks if there is an element in l (tvl, tl) and tvl = tv
 //  - if yes -> 
@@ -85,7 +94,7 @@ let mapEq (l: subst) ((tv: tyvar), (t: ty)) =
         if tl <> t then type_error "Cannot compose substs with <> mappings for the same TyVar (s2 has [%d -> %O] while s1 has [%d -> %O])" tv t tv tl
         else tv, apply_subst l t
 
-// TODO implement this
+// TODO implement this (DONE? maybe test it)
 let compose_subst (s1 : subst) (s2 : subst) : subst = (List.map (mapEq s1) s2) @ s1 
     
 
@@ -117,7 +126,7 @@ let rec re (tvs: Set<tyvar>) (t: ty) : ty =
 
     | TyVar x -> 
         if(Set.contains x tvs) // controlla se 'a è in 'a negato  
-            then freshTyVar 
+            then freshTyVar  ()
             else TyVar x
     
     | TyArrow(t1, t2) -> TyArrow(re tvs t1, re tvs t2)
@@ -162,7 +171,7 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         with KeyNotFoundException -> type_error "%s in not in the domain" x
 
     | Lambda (x, tyo, e) ->  // tyo = type optional (annotated lambda)
-        let tv = freshTyVar
+        let tv = freshTyVar ()
         let sch = Forall(Set.empty, tv) // dummy ty scheme
         let t2, s1 = typeinfer_expr ((x, sch) :: env) e
         let t1 = apply_subst s1 tv
@@ -174,6 +183,24 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
             | Some t -> unify t1 t 
 
         TyArrow(t1, t2), compose_subst s1 s2
+
+    | App(e1, e2) -> 
+        let t1, s1 = typeinfer_expr env e1
+        let t2, s2 = typeinfer_expr (apply_subst_scheme_env env s1) e2
+
+        let fresh_ty = freshTyVar ()
+        // compongo e applico appena possibile sostituzione per debuggare meglio
+        // applicare sostituzioni non è un problema posso farlo quando voglio
+        // se applico man mano errori mi vengono fuori prima e si capisce meglio dove è problema
+        let s3 = compose_subst s1 s2
+        let s4 = unify (apply_subst s3 t1) (TyArrow(apply_subst s3 t2, fresh_ty))
+        apply_subst s4 fresh_ty, compose_subst s3 s4
+
+    | IfThenElse (e1, e2, e3o) ->
+        let t1, s1 = typeinfer_expr env e1
+        let s2 = unify TyBool t1
+        // TODO: completare
+        t1, s2
 
     | Let (x, tyo, e1, e2) ->
         let t1, s1 = typeinfer_expr env e1
