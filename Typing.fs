@@ -143,9 +143,39 @@ let inst_ty (Forall (tvs, t)) : ty =
 // TODO: add builtin operators at will
 
 let gamma0 = [
+    // binary int operators
     ("+", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
     ("-", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
+    ("*", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
+    ("/", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
+    ("%", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
+    ("<", TyArrow (TyInt, TyArrow(TyInt, TyBool)))
+    ("<=", TyArrow (TyInt, TyArrow(TyInt, TyBool)))
+    (">", TyArrow (TyInt, TyArrow(TyInt, TyBool)))
+    (">=", TyArrow (TyInt, TyArrow(TyInt, TyBool)))
+    ("=", TyArrow (TyInt, TyArrow(TyInt, TyBool)))
+    ("<>", TyArrow (TyInt, TyArrow(TyInt, TyBool)))
 
+    // binary float operators
+    ("+.", TyArrow (TyFloat, TyArrow (TyFloat, TyFloat)))
+    ("-.", TyArrow (TyFloat, TyArrow (TyFloat, TyFloat)))
+    ("*.", TyArrow (TyFloat, TyArrow (TyFloat, TyFloat)))
+    ("/.", TyArrow (TyFloat, TyArrow (TyFloat, TyFloat)))
+    ("<.", TyArrow (TyFloat, TyArrow(TyFloat, TyBool)))
+    ("<=.", TyArrow (TyFloat, TyArrow(TyFloat, TyBool)))
+    (">.", TyArrow (TyFloat, TyArrow(TyFloat, TyBool)))
+    (">=.", TyArrow (TyFloat, TyArrow(TyFloat, TyBool)))
+    ("=.", TyArrow (TyFloat, TyArrow(TyFloat, TyBool)))
+    ("<>.", TyArrow (TyFloat, TyArrow(TyFloat, TyBool)))
+
+    // binary bool operators
+    ("and", TyArrow (TyBool, TyArrow(TyBool, TyBool)))
+    ("or", TyArrow (TyBool, TyArrow(TyBool, TyBool)))
+
+    // unary operators
+    ("not", TyArrow (TyBool, TyBool))
+    ("neg", TyArrow (TyInt, TyInt))
+    ("neg.", TyArrow (TyFloat, TyFloat))
 ]
 
 // basic enviroment for type inference
@@ -199,16 +229,55 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
     | IfThenElse (e1, e2, e3o) ->
         let t1, s1 = typeinfer_expr env e1
         let s2 = unify TyBool t1
-        // TODO: completare
-        t1, s2
+
+        let s3 = compose_subst s1 s2
+        let t2, s4 = typeinfer_expr (apply_subst_scheme_env env s3) e2
+        let s5 = compose_subst s3 s4
+
+        let a x = if x then x else x
+
+        let t, s = 
+            match e3o with
+            | None -> apply_subst s5 t2, s5
+            // else branch
+            | Some e3 ->
+                let t3, s6 = typeinfer_expr (apply_subst_scheme_env env s5) e3
+                let s7 = compose_subst s5 s6
+                let s8 = unify (apply_subst s7 t2) (apply_subst s7 t3)
+                apply_subst s8 t2, compose_subst s7 s8
+        t, s
+
 
     | Let (x, tyo, e1, e2) ->
         let t1, s1 = typeinfer_expr env e1
+
+        let s2 = 
+            match tyo with
+            | None -> List.empty 
+            | Some ty -> unify (apply_subst s1 t1) ty
+
+        let s3 = compose_subst s1 s2
+
         //let tvs = freevars_ty t1 - freevars_scheme_env env
         //let sch = Forall (tvs, t1)
-        let sch = generalize_scheme_env t1 env
-        let t2, s2 = typeinfer_expr ((x, sch) :: env) e2 //TODO: manca applicazione sostituzione s1 a env (guarda regola)
-        t2, compose_subst s1 s2
+        let sch = generalize_scheme_env (apply_subst s3 t1) (apply_subst_scheme_env env s3)
+        let t2, s4 = typeinfer_expr ((x, sch) :: (apply_subst_scheme_env env s3)) e2
+        let s5 = compose_subst s3 s4
+        apply_subst s5 t2, s5
+        
+    | BinOp (e1, op, e2) -> 
+        if List.contains op (List.map (fun (s, _) -> s) init_scheme_env)
+            then 
+                typeinfer_expr env (App (App (Var op, e1), e2))
+            else 
+                unexpected_error "typeinfer_expr: unsupported binary operator (%s)" op
+
+    | UnOp (op, e) ->
+        if List.contains op (List.map (fun (s, _) -> s) init_scheme_env)
+            then
+                typeinfer_expr env (App (Var op, e))
+            else 
+                unexpected_error "typeinfer_expr: unsupported unary operator (%s)" op
 
     | _ -> failwithf "not implemented"
 
@@ -322,3 +391,14 @@ let rec typecheck_expr (env : ty env) (e : expr) : ty =
     | UnOp (op, _) -> unexpected_error "typecheck_expr: unsupported unary operator (%s)" op
 
     | _ -> unexpected_error "typecheck_expr: unsupported expression: %s [AST: %A]" (pretty_expr e) e
+
+(*
+    TEST SUS
+         -[if then else]-
+    let a x = if x then x
+    a = cannot unify bool with unit
+    me = bool -> bool
+    cmp = syntax error
+    -------------------------------
+
+*)
