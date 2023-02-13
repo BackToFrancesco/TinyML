@@ -34,6 +34,18 @@ let freshTyVar =
     tyVarCounter <- tyVarCounter + 1
     TyVar tyVarCounter
 
+let rec freevars_ty t =
+    match t with
+    | TyName s -> Set.empty
+    | TyArrow (t1, t2) -> (freevars_ty t1) + (freevars_ty t2)
+    | TyVar tv -> Set.singleton tv
+    | TyTuple ts -> List.fold (fun r t -> r + freevars_ty t) Set.empty ts
+
+let freevars_scheme (Forall (tvs, t)) = freevars_ty t - tvs
+
+let freevars_scheme_env (env: scheme env) =
+    List.fold (fun r (_, sch) -> r + freevars_scheme sch) Set.empty env
+
 // TODO implement this (DONE)
 let rec apply_subst (s : subst) (t : ty) : ty =
     match t with
@@ -42,28 +54,39 @@ let rec apply_subst (s : subst) (t : ty) : ty =
     | TyArrow (t1, t2) -> TyArrow (apply_subst s t1, apply_subst s t2)
 
     | TyVar tv -> 
-        try
-            let _, t1 = List.find (fun (tv1, _) -> tv1 = tv) s
-            in
-                t1
-        with KeyNotFoundException -> t // maybe try this
-        //TODO: avoid circularity
+            let p = List.tryFind (fun (tv1, _) -> tv1 = tv) s
+            match p with
+            | None -> t // not in the domain of the sub
+            | Some (_, t) -> 
+            // avoid circularity
+            let tvs = freevars_ty t 
+            (*
+            Come capire se tv che sta a sx compare nel tipo a dx?
+            -> prendo elenco freevars del tipo a dx (e.g. tutte le tv dentro il tipo poi controllo che tv a sx compare in tv trovate)
+            *)
+            if Set.contains tv tvs then type_error "Cannot apply substitution [%O -> %O], circularity not allowed" tv t
+            else t
 
     | TyTuple ts -> TyTuple (List.map (apply_subst s) ts)
 
-// given a list l, for every element of a list 
-let mapEq (l: (tyvar * ty) List) ((tv: tyvar), (t: ty)) =
+// given a subst list l:
+// 1. checks if there is an element in l (tvl, tl) and tvl = tv
+//  - if yes -> 
+//              1. controls tl <> t (type variable not mapped to different types)
+//              2. if tl = t return (tv, l(t))
+//  - if no -> return (tv, t)
+let mapEq (l: subst) ((tv: tyvar), (t: ty)) =
     let p = List.tryFind (fun (tvl,_) -> tv = tvl) l
 
     match p with
     | None -> tv, t // no element found
-    | Some (tv2, t2) -> 
-        if t2 <> t then type_error "Cannot compose substs with <> mappings for the same TyVar (s2 has [%d -> %O] while s1 has [%d -> %O])" tv t tv2 t2
-        else tv2, apply_subst [(tv, t)] t2
+    | Some (_ , tl) -> 
+        // disjoint 
+        if tl <> t then type_error "Cannot compose substs with <> mappings for the same TyVar (s2 has [%d -> %O] while s1 has [%d -> %O])" tv t tv tl
+        else tv, apply_subst l t
 
 // TODO implement this
-let compose_subst (s1 : subst) (s2 : subst) : subst =
-    (List.map (mapEq s1) s2) @ s1 
+let compose_subst (s1 : subst) (s2 : subst) : subst = (List.map (mapEq s1) s2) @ s1 
     
 
 // TODO implement this (DONE)
@@ -80,18 +103,6 @@ let rec unify (t1 : ty) (t2 : ty) : subst =
         List.fold (fun s (t1, t2) -> compose_subst s (unify t1 t2)) [] (List.zip ts1 ts2)
 
     | _ -> type_error "cannot unify types %O and %O" t1 t2
-
-let rec freevars_ty t =
-    match t with
-    | TyName s -> Set.empty
-    | TyArrow (t1, t2) -> (freevars_ty t1) + (freevars_ty t2)
-    | TyVar tv -> Set.singleton tv
-    | TyTuple ts -> List.fold (fun r t -> r + freevars_ty t) Set.empty ts
-
-let freevars_scheme (Forall (tvs, t)) = freevars_ty t - tvs
-
-let freevars_scheme_env (env: scheme env) =
-    List.fold (fun r (_, sch) -> r + freevars_scheme sch) Set.empty env
 
 // generalize a ty to scheme
 let generalize_scheme_env (t: ty) (env: scheme env) : scheme  = 
@@ -170,7 +181,7 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         //let sch = Forall (tvs, t1)
         let sch = generalize_scheme_env t1 env
         let t2, s2 = typeinfer_expr ((x, sch) :: env) e2 //TODO: manca applicazione sostituzione s1 a env (guarda regola)
-        t2, compose_subst s2 s1
+        t2, compose_subst s1 s2
 
     | _ -> failwithf "not implemented"
 
