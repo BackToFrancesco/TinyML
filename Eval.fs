@@ -57,6 +57,7 @@ let rec eval_expr (env : value env) (e : expr) : value =
     | BinOp (e1, "-", e2) -> binop (-) (-) env e1 e2
     | BinOp (e1, "*", e2) -> binop ( * ) ( * ) env e1 e2
     // TODO: implement other binary ops
+    | Tuple es -> VTuple (List.map (eval_expr env) es) // TODO: ricontrollare
 
     | _ -> unexpected_error "eval_expr: unsupported expression: %s [AST: %A]" (pretty_expr e) e
 

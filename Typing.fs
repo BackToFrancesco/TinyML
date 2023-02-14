@@ -9,19 +9,6 @@ open Ast
 
 type subst = (tyvar * ty) list
 
-// debug function
-let rec printSubst (s : subst) = 
-    match s with
-    | [] -> ()
-    | (tyvar, ty) :: tl -> 
-        printfn "%d -> %A" tyvar ty
-        printSubst tl
-
-let print_sub (s : subst) =
-    printf "\n SUBSTITUTIONs \n"
-    printSubst s
-    printf "\n END \n"
-
 //
 // Utility
 //
@@ -95,8 +82,7 @@ let mapEq (l: subst) ((tv: tyvar), (t: ty)) =
         else tv, apply_subst l t
 
 // TODO implement this (DONE? maybe test it)
-let compose_subst (s1 : subst) (s2 : subst) : subst = (List.map (mapEq s1) s2) @ s1 
-    
+let compose_subst (s1 : subst) (s2 : subst) : subst = (List.map (mapEq s1) s2) @ s1   
 
 // TODO implement this (DONE)
 let rec unify (t1 : ty) (t2 : ty) : subst = 
@@ -116,31 +102,15 @@ let rec unify (t1 : ty) (t2 : ty) : subst =
 // generalize a ty to scheme
 let generalize_scheme_env (t: ty) (env: scheme env) : scheme  = 
         let tvs = freevars_ty t - freevars_scheme_env env
-        let sch = Forall (tvs, t) 
-        sch
-
-// utility fun for inst_ty
-let rec re (tvs: Set<tyvar>) (t: ty) : ty =
-    match t with
-    | TyName x -> TyName x
-
-    | TyVar x -> 
-        if(Set.contains x tvs) // controlla se 'a è in 'a negato  
-            then freshTyVar  ()
-            else TyVar x
-    
-    | TyArrow(t1, t2) -> TyArrow(re tvs t1, re tvs t2)
-    
-    | TyTuple(ts) -> TyTuple(List.map (fun (t) -> re tvs t) ts)
-
+        Forall (tvs, t)
 
 // instantiate a ty from a scheme
-let inst_ty (Forall (tvs, t)) : ty = 
-    re tvs t
+let inst_ty (Forall (tvs, t)) : ty =
+    let s = Set.fold (fun acc tv -> (tv, freshTyVar ()) :: acc) List.Empty tvs
+    apply_subst s t
 
 
 // basic environment:
-// TODO: add builtin operators at will
 
 let gamma0 = [
     // binary int operators
@@ -212,7 +182,7 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
             | None -> []
             | Some t -> unify t1 t 
 
-        TyArrow(t1, t2), compose_subst s1 s2
+        TyArrow(apply_subst s2 t1, t2), compose_subst s1 s2
 
     | App(e1, e2) -> 
         let t1, s1 = typeinfer_expr env e1
@@ -225,6 +195,21 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         let s3 = compose_subst s1 s2
         let s4 = unify (apply_subst s3 t1) (TyArrow(apply_subst s3 t2, fresh_ty))
         apply_subst s4 fresh_ty, compose_subst s3 s4
+
+    | Let (x, tyo, e1, e2) ->
+        let t1, s1 = typeinfer_expr env e1
+
+        let s2 = 
+            match tyo with
+            | None -> list.Empty 
+            | Some ty -> unify (apply_subst s1 t1) ty
+
+        let s3 = compose_subst s1 s2
+
+        let sch = generalize_scheme_env (apply_subst s3 t1) (apply_subst_scheme_env env s3)
+        let t2, s4 = typeinfer_expr ((x, sch) :: (apply_subst_scheme_env env s3)) e2
+        let s5 = compose_subst s3 s4
+        apply_subst s5 t2, s5
 
     | IfThenElse (e1, e2, e3o) ->
         let t1, s1 = typeinfer_expr env e1
@@ -245,25 +230,20 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
                 let s7 = compose_subst s5 s6
                 let s8 = unify (apply_subst s7 t2) (apply_subst s7 t3)
                 apply_subst s8 t2, compose_subst s7 s8
-        t, s
+        t, s  
+        
+    | Tuple es -> 
+        let rec mapf (es: expr list) (s: subst) : ty list * subst =
+            match es with
+            | [] -> [], s
+            | x::xs -> 
+                let t1, s1 = typeinfer_expr (apply_subst_scheme_env env s) x
+                let t2, s2 = mapf xs (compose_subst s s1)
+                (apply_subst s1 t1)::t2, compose_subst s1 s2 
+        
+        let t, s = mapf es []
 
-
-    | Let (x, tyo, e1, e2) ->
-        let t1, s1 = typeinfer_expr env e1
-
-        let s2 = 
-            match tyo with
-            | None -> List.empty 
-            | Some ty -> unify (apply_subst s1 t1) ty
-
-        let s3 = compose_subst s1 s2
-
-        //let tvs = freevars_ty t1 - freevars_scheme_env env
-        //let sch = Forall (tvs, t1)
-        let sch = generalize_scheme_env (apply_subst s3 t1) (apply_subst_scheme_env env s3)
-        let t2, s4 = typeinfer_expr ((x, sch) :: (apply_subst_scheme_env env s3)) e2
-        let s5 = compose_subst s3 s4
-        apply_subst s5 t2, s5
+        TyTuple(t), s
         
     | BinOp (e1, op, e2) -> 
         if List.contains op (List.map (fun (s, _) -> s) init_scheme_env)
