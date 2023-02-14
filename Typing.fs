@@ -244,6 +244,20 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         let t, s = mapf es []
 
         TyTuple(t), s
+
+    | LetRec (f, tfo, e1, e2) -> 
+        let t1, s1 = typeinfer_expr ((f, Forall(Set.empty, freshTyVar ()))::env) e1
+
+        let s2 = match tfo with
+        | None -> List.empty
+        | Some t -> unify t t1 
+
+        let s3 = compose_subst s1 s2
+
+        let sch = generalize_scheme_env (apply_subst s3 t1) (apply_subst_scheme_env env s3)
+        let t2, s4 = typeinfer_expr ((f, sch) :: (apply_subst_scheme_env env s3)) e2
+        let s5 = compose_subst s3 s4
+        apply_subst s5 t2, s5
         
     | BinOp (e1, op, e2) -> 
         if List.contains op (List.map (fun (s, _) -> s) init_scheme_env)
@@ -381,4 +395,12 @@ let rec typecheck_expr (env : ty env) (e : expr) : ty =
     cmp = syntax error
     -------------------------------
 
+    TEST FAILED
+    let rec f x = f f in f (let-rec)
+    let f x y = if true then x else y in let g x y z = f x (f y z) in g (let)
+    let f x y = if true then x else y in let g x y z = f (f x 0) (f y z) in g (let)
+    let f x y = if true then x else y in let g x y z = f (f x y) (f 0 z) in g (let)
+    let rec f x = f f in f (let rec) (non da err nemmeno ad a)
+    let f x = x in f 2 (app)
+    let f x y z = (if true then x else y, if true then x else z, x + 1) in f (da err anche ad a)
 *)
