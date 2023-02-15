@@ -189,11 +189,8 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         let t2, s2 = typeinfer_expr (apply_subst_scheme_env env s1) e2
 
         let fresh_ty = freshTyVar ()
-        // compongo e applico appena possibile sostituzione per debuggare meglio
-        // applicare sostituzioni non è un problema posso farlo quando voglio
-        // se applico man mano errori mi vengono fuori prima e si capisce meglio dove è problema
         let s3 = compose_subst s1 s2
-        let s4 = unify (apply_subst s3 t1) (TyArrow(apply_subst s3 t2, fresh_ty))
+        let s4 = unify (TyArrow(apply_subst s3 t2, fresh_ty)) (apply_subst s3 t1)
         apply_subst s4 fresh_ty, compose_subst s3 s4
 
     | Let (x, tyo, e1, e2) ->
@@ -361,7 +358,7 @@ let rec typecheck_expr (env : ty env) (e : expr) : ty =
         TyBool
 
     | BinOp (e1, ("and" | "or" as op), e2) ->
-        let t1 = typecheck_expr env e1
+        let t1 = typecheck_expr env e1 
         let t2 = typecheck_expr env e2
         match t1, t2 with
         | TyBool, TyBool -> ()
@@ -396,11 +393,7 @@ let rec typecheck_expr (env : ty env) (e : expr) : ty =
     -------------------------------
 
     TEST FAILED
-    let rec f x = f f in f (let-rec)
-    let f x y = if true then x else y in let g x y z = f x (f y z) in g (let)
-    let f x y = if true then x else y in let g x y z = f (f x 0) (f y z) in g (let)
-    let f x y = if true then x else y in let g x y z = f (f x y) (f 0 z) in g (let)
     let rec f x = f f in f (let rec) (non da err nemmeno ad a)
-    let f x = x in f 2 (app)
     let f x y z = (if true then x else y, if true then x else z, x + 1) in f (da err anche ad a)
+    let x : int * int = (1, 2, 3) in x (crash anche a a)
 *)
