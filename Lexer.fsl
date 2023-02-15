@@ -61,6 +61,18 @@ and tokenize = parse
 	| "or"			{ OR }
 	| "and"			{ AND }
 	| "not"			{ NOT }
+	| "neg"			{ NEG }
+	| "neg."		{ NEG_FLOAT }
+	| "+."			{ PLUS_FLOAT }
+	| "-."			{ MINUS_FLOAT }
+	| "*."			{ STAR_FLOAT }
+	| "/."			{ SLASH_FLOAT }
+	| "=."			{ EQ_FLOAT }
+	| "<>."			{ NEQ_FLOAT }
+	| "<."			{ LT_FLOAT }
+	| ">."			{ GT_FLOAT }
+	| "<=."			{ LEQ_FLOAT }
+	| ">=."			{ GEQ_FLOAT }
 
 	// keywords
 	| "if"			{ IF }

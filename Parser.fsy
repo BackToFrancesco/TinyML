@@ -18,8 +18,10 @@ let parse_error_rich = Some (fun ctx -> raise (ParseErrorContextException ctx))
        TRUE FALSE 
        BRA KET 
        PLUS MINUS STAR SLASH PERCENT
+       PLUS_FLOAT MINUS_FLOAT STAR_FLOAT SLASH_FLOAT
        LT GT LEQ GEQ EQ NEQ
-       AND OR NOT
+       LT_FLOAT GT_FLOAT LEQ_FLOAT GEQ_FLOAT EQ_FLOAT NEQ_FLOAT
+       AND OR NOT NEG NEG_FLOAT
        COLON SEMICOLON2 COMMA
 %token EOF
 
@@ -30,10 +32,12 @@ let parse_error_rich = Some (fun ctx -> raise (ParseErrorContextException ctx))
 %left AND 
 %left EQ LT GT LEQ GEQ NEQ
 %left PLUS MINUS 
+%left PLUS_FLOAT MINUS_FLOAT STAR_FLOAT SLASH_FLOAT
 %left STAR SLASH MOD 
 %left APP
 %nonassoc NOT
-%nonassoc UMINUS
+%nonassoc NEG
+%nonassoc NEG_FLOAT
 
 %type < TinyML.Ast.expr > program
 %type < TinyML.Ast.interactive > interactive
@@ -97,7 +101,8 @@ expr_tuple_atom:
   | binding IN expr                             { LetIn ($1, $3) }
   
   | NOT expr_tuple_atom							            { UnOp ("not", $2) }
-  | MINUS expr_tuple_atom %prec UMINUS  		            { UnOp ("-", $2) }
+  | NEG expr_tuple_atom                   		            { UnOp ("neg", $2) }
+  | NEG_FLOAT expr_tuple_atom               		        { UnOp ("neg.", $2) }
 
   | expr_tuple_atom PLUS expr_tuple_atom					{ BinOp ($1, "+", $3) }
   | expr_tuple_atom MINUS expr_tuple_atom					{ BinOp ($1, "-", $3) }
@@ -105,12 +110,25 @@ expr_tuple_atom:
   | expr_tuple_atom SLASH expr_tuple_atom					{ BinOp ($1, "/", $3) }
   | expr_tuple_atom PERCENT expr_tuple_atom				    { BinOp ($1, "%", $3) }
 
+  | expr_tuple_atom PLUS_FLOAT expr_tuple_atom				{ BinOp ($1, "+.", $3) }
+  | expr_tuple_atom MINUS_FLOAT expr_tuple_atom				{ BinOp ($1, "-.", $3) }
+  | expr_tuple_atom STAR_FLOAT expr_tuple_atom				{ BinOp ($1, "*.", $3) }
+  | expr_tuple_atom SLASH_FLOAT expr_tuple_atom				{ BinOp ($1, "/.", $3) }
+
   | expr_tuple_atom EQ expr_tuple_atom						{ BinOp ($1, "=", $3) }
   | expr_tuple_atom NEQ expr_tuple_atom						{ BinOp ($1, "<>", $3) }
   | expr_tuple_atom LT expr_tuple_atom						{ BinOp ($1, "<", $3) }
   | expr_tuple_atom GT expr_tuple_atom						{ BinOp ($1, ">", $3) }
   | expr_tuple_atom LEQ expr_tuple_atom						{ BinOp ($1, "<=", $3) }
   | expr_tuple_atom GEQ expr_tuple_atom						{ BinOp ($1, ">=", $3) }
+
+  | expr_tuple_atom EQ_FLOAT expr_tuple_atom				{ BinOp ($1, "=.", $3) }
+  | expr_tuple_atom NEQ_FLOAT expr_tuple_atom				{ BinOp ($1, "<>.", $3) }
+  | expr_tuple_atom LT_FLOAT expr_tuple_atom				{ BinOp ($1, "<.", $3) }
+  | expr_tuple_atom GT_FLOAT expr_tuple_atom				{ BinOp ($1, ">.", $3) }
+  | expr_tuple_atom LEQ_FLOAT expr_tuple_atom				{ BinOp ($1, "<=.", $3) }
+  | expr_tuple_atom GEQ_FLOAT expr_tuple_atom				{ BinOp ($1, ">=.", $3) }
+
   | expr_tuple_atom AND expr_tuple_atom                     { BinOp ($1, "and", $3) }
   | expr_tuple_atom OR expr_tuple_atom				        { BinOp ($1, "or", $3) }
 
