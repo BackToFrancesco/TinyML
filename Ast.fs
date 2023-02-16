@@ -115,6 +115,7 @@ let pretty_tupled p l = flatten p ", " l
 let rec pretty_ty t =
     match t with
     | TyName s -> s
+    | TyArrow (TyArrow _ as t1, t3) -> sprintf "(%s) -> %s" (pretty_ty t1) (pretty_ty t3)
     | TyArrow (t1, t2) -> sprintf "%s -> %s" (pretty_ty t1) (pretty_ty t2)
     | TyVar n -> sprintf "'%d" n
     | TyTuple ts -> sprintf "(%s)" (pretty_tupled pretty_ty ts)
