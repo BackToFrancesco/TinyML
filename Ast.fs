@@ -115,6 +115,7 @@ let pretty_tupled p l = flatten p ", " l
 let rec pretty_ty t =
     match t with
     | TyName s -> s
+    // deal with case let f x y z = x y z type of f: ('a -> 'b -> 'c) -> 'a -> 'b ->'c 
     | TyArrow (TyArrow _ as t1, t3) -> sprintf "(%s) -> %s" (pretty_ty t1) (pretty_ty t3)
     | TyArrow (t1, t2) -> sprintf "%s -> %s" (pretty_ty t1) (pretty_ty t2)
     | TyVar n -> sprintf "'%d" n
@@ -194,4 +195,3 @@ let rec pretty_value v =
     | Closure (env, x, e) -> sprintf "<|%s;%s;%s|>" (pretty_env pretty_value env) x (pretty_expr e)
     
     | RecClosure (env, f, x, e) -> sprintf "<|%s;%s;%s;%s|>" (pretty_env pretty_value env) f x (pretty_expr e)
-    

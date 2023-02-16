@@ -43,14 +43,11 @@ let rec apply_subst (s : subst) (t : ty) : ty =
     | TyVar tv -> 
             let p = List.tryFind (fun (tv1, _) -> tv1 = tv) s
             match p with
-            | None -> t // not in the domain of the sub
+            | None -> t 
             | Some (_, t) -> 
-            // avoid circularity
+            // avoid circularity e.g. 1 -> (1 -> int)
             let tvs = freevars_ty t 
-            (*
-            Come capire se tv che sta a sx compare nel tipo a dx?
-            -> prendo elenco freevars del tipo a dx (e.g. tutte le tv dentro il tipo poi controllo che tv a sx compare in tv trovate)
-            *)
+
             if Set.contains tv tvs then type_error "Cannot apply substitution [%O -> %O], circularity not allowed" tv t
             else t
 
@@ -65,23 +62,25 @@ let apply_subst_scheme  (Forall (tvs, t)) (s: subst): scheme =
 let apply_subst_scheme_env (env: scheme env) (s: subst) : scheme env =
     List.map (fun (id , sch) -> id, apply_subst_scheme sch s) env
 
-// given a subst list l:
-// 1. checks if there is an element in l (tvl, tl) and tvl = tv
-//  - if yes -> 
-//              1. controls tl <> t (type variable not mapped to different types)
-//              2. if tl = t return (tv, l(t))
-//  - if no -> return (tv, t)
+(* 
+given a subst list l checks if there is an element in l (tvl, tl) and tvl = tv
+  - if yes -> 
+              1. controls tl <> t (type variable not mapped to different types)
+              2. if tl = t return (tv, l(t))
+  - if no -> return (tv, t)
+*)
 let mapEq (l: subst) ((tv: tyvar), (t: ty)) =
     let p = List.tryFind (fun (tvl,_) -> tv = tvl) l
 
     match p with
-    | None -> tv, t // no element found
+    | None -> tv, t
     | Some (_ , tl) -> 
         // disjoint 
-        if tl <> t then type_error "Cannot compose substs with <> mappings for the same TyVar (s2 has [%d -> %O] while s1 has [%d -> %O])" tv t tv tl
+        if tl <> t 
+        then type_error "Cannot compose substs with <> mappings for the same TyVar (s2 has [%d -> %O] while s1 has [%d -> %O])" tv t tv tl
         else tv, apply_subst l t
 
-// TODO implement this (DONE? maybe test it)
+// TODO implement this (DONE)
 let compose_subst (s1 : subst) (s2 : subst) : subst = (List.map (mapEq s1) s2) @ s1   
 
 // TODO implement this (DONE)
@@ -109,8 +108,34 @@ let inst_ty (Forall (tvs, t)) : ty =
     let s = Set.fold (fun acc tv -> (tv, freshTyVar ()) :: acc) List.Empty tvs
     apply_subst s t
 
+//
+//          Pretty print with greek letters
+//
 
-// basic environment:
+// utility function for pretty_ty_gl for print type in the correct format
+let rec pretty_ty_tvs mappings t =
+    match t with
+    | TyName s -> s
+    | TyArrow (TyArrow _ as t1, t3) -> sprintf "(%s) -> %s" (pretty_ty_tvs mappings t1) (pretty_ty_tvs mappings t3)
+    | TyArrow (t1, t2) -> sprintf "%s -> %s" (pretty_ty_tvs mappings t1) (pretty_ty_tvs mappings t2)
+    | TyVar n -> 
+        let _, pretty_tv = List.find (fun (ftv, _) -> ftv = n) mappings
+        sprintf "'%c" pretty_tv
+    | TyTuple ts -> sprintf "(%s)" (Ast.pretty_tupled (pretty_ty_tvs mappings) ts)
+
+// pretty_ty_gl is for printing greek letters instead numbers in types
+let pretty_ty_gl t =
+    let ftvs = freevars_ty t
+
+    if Set.count ftvs > 0 
+        then
+            let alphabet = List.truncate (Set.count ftvs) ['a' .. 'z']
+            pretty_ty_tvs (List.zip (Set.toList ftvs) alphabet) t
+        else Ast.pretty_ty t
+
+//
+//           Basic environment:
+//
 
 let gamma0 = [
     // binary int operators
@@ -149,11 +174,10 @@ let gamma0 = [
 ]
 
 // basic enviroment for type inference
-// create a list as env of (string * type scheme)
 let init_scheme_env = List.map (fun (s, t) -> (s, Forall (Set.empty, t))) gamma0
 
 
-// TODO continue implementing this
+// TODO continue implementing this (DONE)
 let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
     match e with
     | Lit (LInt _) -> TyInt, [] 
@@ -165,8 +189,8 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
 
     | Var x -> 
         try
-            let _, sch = List.find (fun (y, _) -> x = y) env // prendo schema di x
-            let t = inst_ty sch // instanzializzo lo schema per ricavare t
+            let _, sch = List.find (fun (y, _) -> x = y) env
+            let t = inst_ty sch
             t, [] 
         with KeyNotFoundException -> type_error "%s in not in the domain" x
 
@@ -176,7 +200,6 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         let t2, s1 = typeinfer_expr ((x, sch) :: env) e
         let t1 = apply_subst s1 tv
 
-        // annotated lambdas
         let s2 = 
             match tyo with
             | None -> []
@@ -186,10 +209,12 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
 
     | App(e1, e2) -> 
         let t1, s1 = typeinfer_expr env e1
+
         let t2, s2 = typeinfer_expr (apply_subst_scheme_env env s1) e2
 
         let fresh_ty = freshTyVar ()
         let s3 = compose_subst s1 s2
+
         let s4 = unify (TyArrow(apply_subst s3 t2, fresh_ty)) (apply_subst s3 t1)
         apply_subst s4 fresh_ty, compose_subst s3 s4
 
@@ -216,11 +241,11 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
         let t2, s4 = typeinfer_expr (apply_subst_scheme_env env s3) e2
         let s5 = compose_subst s3 s4
 
-        let a x = if x then x else x
-
         let t, s = 
             match e3o with
-            | None -> apply_subst s5 t2, s5
+            | None -> 
+                let so = unify t2 TyUnit
+                apply_subst s5 t2, compose_subst s5 so
             // else branch
             | Some e3 ->
                 let t3, s6 = typeinfer_expr (apply_subst_scheme_env env s5) e3
@@ -245,14 +270,16 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
     | LetRec (f, tfo, e1, e2) -> 
         let t1, s1 = typeinfer_expr ((f, Forall(Set.empty, freshTyVar ()))::env) e1
 
-        let s2 = match tfo with
-        | None -> List.empty
-        | Some t -> unify t t1 
+        let s2 = 
+            match tfo with
+            | None -> List.empty
+            | Some t -> unify t t1 
 
         let s3 = compose_subst s1 s2
 
         let sch = generalize_scheme_env (apply_subst s3 t1) (apply_subst_scheme_env env s3)
         let t2, s4 = typeinfer_expr ((f, sch) :: (apply_subst_scheme_env env s3)) e2
+
         let s5 = compose_subst s3 s4
         apply_subst s5 t2, s5
         
@@ -272,8 +299,8 @@ let rec typeinfer_expr (env : scheme env) (e : expr) : ty * subst =
 
     | _ -> failwithf "not implemented"
 
-
-// type checker
+//
+//          Type checker
 //
     
 let rec typecheck_expr (env : ty env) (e : expr) : ty =
@@ -384,14 +411,6 @@ let rec typecheck_expr (env : ty env) (e : expr) : ty =
     | _ -> unexpected_error "typecheck_expr: unsupported expression: %s [AST: %A]" (pretty_expr e) e
 
 (*
-    TEST SUS
-         -[if then else]-
-    let a x = if x then x
-    a = cannot unify bool with unit
-    me = bool -> bool
-    cmp = syntax error
-    -------------------------------
-
     TEST FAILED
     let rec f x = f f in f (let rec) (non da err nemmeno ad a)
     let f x y z = (if true then x else y, if true then x else z, x + 1) in f (da err anche ad a)

@@ -17,7 +17,7 @@ let interpret_expr tenv venv e =
     #endif
     let t, s = Typing.typeinfer_expr tenv e //for type checking typecheck_expr tenv e
     #if DEBUG
-    printfn "type:\t%s" (pretty_ty (Typing.apply_subst s t))//for typechecking t)
+    printfn "type:\t%s" (Typing.pretty_ty_gl (Typing.apply_subst s t))//for typechecking t)
     #endif
     let v = Eval.eval_expr venv e
     #if DEBUG
@@ -38,7 +38,7 @@ let main_interpreter filename =
         use rd = new IO.StreamReader (fstr)
         let prg = parse_from_TextReader rd filename Parser.program 
         let t, v = interpret_expr [] [] prg
-        printfn "type:\t%s\nvalue:\t%s" (pretty_ty t) (pretty_value v)
+        printfn "type:\t%s\nvalue:\t%s" (Typing.pretty_ty_gl t) (pretty_value v)
 
 let main_interactive () =
     printfn "entering interactive mode..."
@@ -60,7 +60,7 @@ let main_interactive () =
                     venv <- (x, v) :: venv
                     x, (t, v)
 
-            printfn "val %s : %s = %s" x (pretty_ty t) (pretty_value v)
+            printfn "val %s : %s = %s" x (Typing.pretty_ty_gl t) (pretty_value v)
                 
     
 [<EntryPoint>]
