@@ -12,6 +12,7 @@ in ()
 
 let f = fun x -> (x + 1, if x then 1 else 2)
 
+let rec f x = if x = 1 then 1 else f (x - 1) * x
 
 
 

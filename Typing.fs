@@ -410,9 +410,3 @@ let rec typecheck_expr (env : ty env) (e : expr) : ty =
 
     | _ -> unexpected_error "typecheck_expr: unsupported expression: %s [AST: %A]" (pretty_expr e) e
 
-(*
-    TEST FAILED
-    let rec f x = f f in f (let rec) (non da err nemmeno ad a)
-    let f x y z = (if true then x else y, if true then x else z, x + 1) in f (da err anche ad a)
-    let x : int * int = (1, 2, 3) in x (crash anche a a)
-*)
